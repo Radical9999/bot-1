@@ -1,0 +1,22 @@
+{
+  "users": {
+    "999365318877134989": {
+      "coins": 30,
+      "xp": null
+    }
+  },
+  "shop": [
+    {
+      "name": "VIP Role",
+      "price": 1000
+    },
+    {
+      "name": "Golden Cookie",
+      "price": 500
+    },
+    {
+      "name": "Shiny Badge",
+      "price": 2000
+    }
+  ]
+}
