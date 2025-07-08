@@ -1,10 +1,14 @@
+// Replace this:
+// const { EmbedBuilder } = require('discord.js');
+// const { db } = require('../db');
 
-const { EmbedBuilder } = require('discord.js');
-const { db } = require('../db');
+// With this:
+import { EmbedBuilder } from 'discord.js';
+import { db } from '../db.js'; // Add `.js` to avoid path issues
 
 const cooldown = new Set();
 
-module.exports = async function handleMessageXP(message) {
+export default async function handleMessageXP(message) {
   if (message.author.bot || !message.guild) return;
 
   if (cooldown.has(message.author.id)) return;
@@ -42,4 +46,4 @@ module.exports = async function handleMessageXP(message) {
 
     message.channel.send({ embeds: [levelEmbed] });
   }
-};
+}
