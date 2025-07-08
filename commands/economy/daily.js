@@ -1,10 +1,9 @@
-
-const { SlashCommandBuilder } = require('discord.js');
-const { db } = require('../../db');
+import { SlashCommandBuilder } from 'discord.js';
+import { db } from '../../db.js';
 
 const cooldowns = new Map();
 
-module.exports = {
+export default {
   data: new SlashCommandBuilder()
     .setName('daily')
     .setDescription('Claim your daily reward!'),
@@ -21,17 +20,19 @@ module.exports = {
       return interaction.reply(`⏳ You already claimed your daily. Come back in **${hours}h ${minutes}m**.`);
     }
 
-    const coins = 100;
-    const xp = 25;
-    let userData = db.get('users').find({ id: userId });
+    let users = await db.get('users');
+    let user = users.find(u => u.id === userId);
 
-    if (!userData.value()) {
-      db.get('users').push({ id: userId, coins, xp, level: 0 }).write();
+    if (!user) {
+      user = { id: userId, xp: 25, level: 0, coins: 100 };
+      users.push(user);
     } else {
-      userData.update('coins', n => n + coins).update('xp', n => n + xp).write();
+      user.xp += 25;
+      user.coins += 100;
     }
 
+    await db.set('users', users);
     cooldowns.set(userId, now);
-    await interaction.reply(`✅ You received **${coins} coins** and **${xp} XP**!`);
+    await interaction.reply(`✅ You received **100 coins** and **25 XP**!`);
   }
-};
+}

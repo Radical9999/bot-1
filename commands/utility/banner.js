@@ -1,30 +1,30 @@
+import { SlashCommandBuilder } from 'discord.js';
 
-const { SlashCommandBuilder } = require('discord.js');
-
-module.exports = {
+export default {
   data: new SlashCommandBuilder()
     .setName('banner')
-    .setDescription('Shows a user\'s profile banner')
+    .setDescription('Get a user\'s banner image')
     .addUserOption(option =>
-      option.setName('user').setDescription('User to get banner of').setRequired(false)
-    ),
+      option.setName('user')
+        .setDescription('Select a user')
+        .setRequired(false)),
 
   async execute(interaction) {
     const user = interaction.options.getUser('user') || interaction.user;
     const userFetched = await interaction.client.users.fetch(user.id, { force: true });
 
     if (!userFetched.banner) {
-      return interaction.reply(`${user.username} has no banner set.`);
+      return interaction.reply({
+        content: `${user.username} does not have a banner.`,
+        ephemeral: true
+      });
     }
 
-    const bannerURL = userFetched.bannerURL({ size: 1024 });
+    const bannerURL = userFetched.bannerURL({ size: 1024, dynamic: true });
+
     await interaction.reply({
-      embeds: [
-        {
-          title: `${user.username}'s Banner`,
-          image: { url: bannerURL }
-        }
-      ]
+      content: `${user.username}'s banner: ${bannerURL}`,
+      ephemeral: false
     });
   }
 };

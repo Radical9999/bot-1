@@ -1,16 +1,10 @@
-import { Low } from 'lowdb';
-import { JSONFile } from 'lowdb/node';
-import { join } from 'path';
+import Jsoning from 'jsoning';
 
-// 👇 define default structure up front
-const defaultData = { users: {}, shop: [] };
+export const db = new Jsoning('./db.json');
 
-const file = join('./db', 'database.json');
-const adapter = new JSONFile(file);
+// Ensure the structure exists on startup
+let users = await db.get('users');
+if (!Array.isArray(users)) await db.set('users', []);
 
-// 👇 pass defaultData to Low
-export const db = new Low(adapter, defaultData);
-
-await db.read();
-// No need to manually check `db.data` anymore
-await db.write();
+let shop = await db.get('shop');
+if (!Array.isArray(shop)) await db.set('shop', []);

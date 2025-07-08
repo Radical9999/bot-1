@@ -1,14 +1,10 @@
-import { Low } from 'lowdb'
-import { JSONFile } from 'lowdb/node'
+import Jsoning from 'jsoning';
 
-const adapter = new JSONFile('./db.json')
-export const db = new Low(adapter)
+export const db = new Jsoning('./db.json');
 
-// ⚠️ You must call read() before accessing db.data
-await db.read()
+// Ensure structure exists on first load
+let users = await db.get('users');
+if (!Array.isArray(users)) await db.set('users', []);
 
-// ✅ Set default structure if db.json is empty
-if (!db.data) {
-  db.data = { users: [], shop: [] }
-  await db.write()
-}
+let shop = await db.get('shop');
+if (!Array.isArray(shop)) await db.set('shop', []);

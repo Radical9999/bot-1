@@ -1,10 +1,5 @@
-// Replace this:
-// const { EmbedBuilder } = require('discord.js');
-// const { db } = require('../db');
-
-// With this:
 import { EmbedBuilder } from 'discord.js';
-import { db } from '../db.js'; // Add `.js` to avoid path issues
+import { db } from '../db.js';
 
 const cooldown = new Set();
 
@@ -18,32 +13,31 @@ export default async function handleMessageXP(message) {
   const xpGained = Math.floor(Math.random() * 10) + 5;
   const coinsGained = Math.floor(Math.random() * 5) + 1;
 
-  let userData = db.get('users').find({ id: message.author.id });
+  let users = await db.get('users');
+  let user = users.find(u => u.id === message.author.id);
 
-  if (!userData.value()) {
-    db.get('users')
-      .push({ id: message.author.id, xp: xpGained, level: 0, coins: coinsGained })
-      .write();
+  if (!user) {
+    user = { id: message.author.id, xp: xpGained, level: 0, coins: coinsGained };
+    users.push(user);
   } else {
-    userData.update('xp', n => n + xpGained).update('coins', n => n + coinsGained).write();
+    user.xp += xpGained;
+    user.coins += coinsGained;
   }
 
-  userData = db.get('users').find({ id: message.author.id }).value();
-  const levelUpXp = 100 + userData.level * 25;
+  const levelUpXp = 100 + user.level * 25;
+  if (user.xp >= levelUpXp) {
+    user.level += 1;
+    user.xp -= levelUpXp;
 
-  if (userData.xp >= levelUpXp) {
-    db.get('users').find({ id: message.author.id })
-      .update('level', n => n + 1)
-      .update('xp', n => n - levelUpXp)
-      .write();
-
-    const levelEmbed = new EmbedBuilder()
+    const embed = new EmbedBuilder()
       .setColor(0x00FF00)
       .setTitle(`🌟 Level Up!`)
-      .setDescription(`${message.author} reached **Level ${userData.level + 1}**!`)
+      .setDescription(`${message.author} reached **Level ${user.level}**!`)
       .setThumbnail(message.author.displayAvatarURL({ size: 256 }))
       .setFooter({ text: 'Keep chatting to level up more!' });
 
-    message.channel.send({ embeds: [levelEmbed] });
+    message.channel.send({ embeds: [embed] });
   }
+
+  await db.set('users', users);
 }

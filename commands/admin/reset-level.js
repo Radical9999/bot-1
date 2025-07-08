@@ -1,25 +1,30 @@
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { db } from '../../db.js';
 
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const { db } = require('../../db');
-
-module.exports = {
+export default {
   data: new SlashCommandBuilder()
     .setName('reset-level')
-    .setDescription('Reset a user\'s level and XP.')
+    .setDescription('Reset a user\'s XP and level')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addUserOption(option =>
-      option.setName('user').setDescription('The user to reset').setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+      option.setName('user')
+        .setDescription('User whose level to reset')
+        .setRequired(true)),
 
   async execute(interaction) {
-    const user = interaction.options.getUser('user');
-    const userData = db.get('users').find({ id: user.id });
+    const targetUser = interaction.options.getUser('user');
 
-    if (!userData.value()) {
-      return interaction.reply({ content: `${user.username} has no data to reset.`, ephemeral: true });
+    let users = await db.get('users');
+    let user = users.find(u => u.id === targetUser.id);
+
+    if (!user) {
+      return interaction.reply({ content: 'User not found in database.', ephemeral: true });
     }
 
-    userData.assign({ xp: 0, level: 0 }).write();
-    await interaction.reply(`${user.username}'s level and XP have been reset.`);
+    user.level = 0;
+    user.xp = 0;
+
+    await db.set('users', users);
+    await interaction.reply(`🔁 Reset **${targetUser.username}**'s level and XP.`);
   }
 };

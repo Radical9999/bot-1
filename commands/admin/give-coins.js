@@ -1,31 +1,36 @@
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { db } from '../../db.js';
 
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const { db } = require('../../db');
-
-module.exports = {
+export default {
   data: new SlashCommandBuilder()
     .setName('give-coins')
-    .setDescription('Give coins to a user.')
+    .setDescription('Give coins to a user')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addUserOption(option =>
-      option.setName('user').setDescription('The user to give coins to').setRequired(true)
-    )
+      option.setName('user').setDescription('User to give coins to').setRequired(true))
     .addIntegerOption(option =>
-      option.setName('amount').setDescription('Amount of coins to give').setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+      option.setName('amount').setDescription('Amount of coins to give').setRequired(true)),
 
   async execute(interaction) {
-    const user = interaction.options.getUser('user');
+    const targetUser = interaction.options.getUser('user');
     const amount = interaction.options.getInteger('amount');
 
-    const userData = db.get('users').find({ id: user.id });
-
-    if (!userData.value()) {
-      db.get('users').push({ id: user.id, coins: amount, level: 0, xp: 0 }).write();
-    } else {
-      userData.update('coins', n => (n || 0) + amount).write();
+    if (amount <= 0) {
+      return interaction.reply({ content: 'Amount must be greater than 0.', ephemeral: true });
     }
 
-    await interaction.reply(`${amount} coins have been given to ${user.username}.`);
+    let users = await db.get('users');
+    let user = users.find(u => u.id === targetUser.id);
+
+    if (!user) {
+      user = { id: targetUser.id, coins: amount, xp: 0, level: 0 };
+      users.push(user);
+    } else {
+      user.coins += amount;
+    }
+
+    await db.set('users', users);
+
+    await interaction.reply(`✅ Gave **${amount} coins** to **${targetUser.username}**.`);
   }
 };

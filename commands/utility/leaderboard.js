@@ -1,44 +1,40 @@
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { db } from '../../db.js';
 
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { db } = require('../../db');
-
-module.exports = {
+export default {
   data: new SlashCommandBuilder()
     .setName('leaderboard')
-    .setDescription('Show top users by XP or Coins')
+    .setDescription('Show top users by XP or coins')
     .addStringOption(option =>
       option.setName('type')
-        .setDescription('Choose what to rank')
-        .setRequired(true)
+        .setDescription('Leaderboard type')
         .addChoices(
           { name: 'XP', value: 'xp' },
           { name: 'Coins', value: 'coins' }
         )
+        .setRequired(true)
     ),
 
   async execute(interaction) {
     const type = interaction.options.getString('type');
-    const users = db.get('users').value();
+    const users = await db.get('users');
 
-    const sorted = users
-      .filter(u => u[type] !== undefined)
-      .sort((a, b) => b[type] - a[type])
-      .slice(0, 10);
+    const sorted = [...users].sort((a, b) => (b[type] || 0) - (a[type] || 0)).slice(0, 10);
 
-    const leaderboard = await Promise.all(sorted.map(async (user, index) => {
-      try {
-        const member = await interaction.client.users.fetch(user.id);
-        return `\`#${index + 1}\` ${member.tag} — **${user[type]} ${type}**`;
-      } catch {
-        return `\`#${index + 1}\` Unknown User — **${user[type]} ${type}**`;
-      }
-    }));
+    if (sorted.length === 0) {
+      return interaction.reply({ content: `No users found for ${type} leaderboard.`, ephemeral: true });
+    }
+
+    const leaderboard = sorted.map((user, index) => {
+      const value = user[type] || 0;
+      return `\`#${index + 1}\` <@${user.id}> — **${value} ${type === 'xp' ? 'XP' : 'coins'}**`;
+    }).join('\n');
 
     const embed = new EmbedBuilder()
-      .setColor(0x00BFFF)
-      .setTitle(`🏆 Top ${type === 'xp' ? 'XP' : 'Coins'} Earners`)
-      .setDescription(leaderboard.join('\n') || 'No data found.')
-      .setFooter({ text: 'Use the bot often to climb the leaderboard!' });
+      .setTitle(`${type === 'xp' ? '🏆 XP Leaderboard' : '💰 Coin Leaderboard'}`)
+      .setDescription(leaderboard)
+      .setColor(0xFFD700)
+      .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
   }
