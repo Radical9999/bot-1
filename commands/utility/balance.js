@@ -1,27 +1,26 @@
 // commands/utility/balance.js
 import { SlashCommandBuilder } from 'discord.js';
-import { getUserData } from '../../utils/economy.js';
+import { db } from '../../db.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('balance')
-    .setDescription('View your current coin balance, total bet, and net gain'),
+    .setDescription('Check your balance'),
 
   async execute(interaction) {
     const userId = interaction.user.id;
-    const userData = await getUserData(userId);
+    const users = await db.get('users') || [];
+    let userData = users.find(u => u.id === userId);
 
-    const embed = {
-      color: 0xFFD700,
-      title: `${interaction.user.username}'s Balance`,
-      fields: [
-        { name: '💰 Coins', value: `${userData.coins}`, inline: true },
-        { name: '🎲 Total Bet', value: `${userData.totalBet}`, inline: true },
-        { name: '📈 Net Gain', value: `${userData.netGain}`, inline: true },
-      ],
-      footer: { text: 'Use /gamble to try your luck!' },
-    };
+    if (!userData) {
+      userData = { id: userId, coins: 0, xp: 0, level: 0 };
+      users.push(userData);
+      await db.set('users', users);
+    }
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-  },
+    await interaction.reply({
+      content: `💰 You have **${userData.coins}** coins.`,
+      flags: 64, // ephemeral = true replacement
+    });
+  }
 };

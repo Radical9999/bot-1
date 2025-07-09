@@ -1,20 +1,25 @@
+// utils/messageXpSystem.js
 import { EmbedBuilder } from 'discord.js';
-import { db } from '../db.js';
+import { db } from '../db.js'; // using jsoning
 
 const cooldown = new Set();
 
 export default async function handleMessageXP(message) {
   if (message.author.bot || !message.guild) return;
 
-  if (cooldown.has(message.author.id)) return;
-  cooldown.add(message.author.id);
-  setTimeout(() => cooldown.delete(message.author.id), 30000);
-
-  await db.read();
-
   const userId = message.author.id;
-  if (!db.data.users[userId]) {
-    db.data.users[userId] = {
+
+  if (cooldown.has(userId)) return;
+  cooldown.add(userId);
+  setTimeout(() => cooldown.delete(userId), 30000);
+
+  // Load or initialize user data
+  const users = (await db.get('users')) || [];
+  let user = users.find(u => u.id === userId);
+
+  if (!user) {
+    user = {
+      id: userId,
       coins: 0,
       totalBet: 0,
       netGain: 0,
@@ -22,15 +27,16 @@ export default async function handleMessageXP(message) {
       level: 0,
       inventory: [],
     };
+    users.push(user);
   }
 
-  const user = db.data.users[userId];
+  // Add random XP and coins
   const xpGained = Math.floor(Math.random() * 10) + 5;
   const coinsGained = Math.floor(Math.random() * 5) + 1;
-
   user.xp += xpGained;
   user.coins += coinsGained;
 
+  // Check level up
   const requiredXP = 100 + user.level * 25;
   const leveledUp = user.xp >= requiredXP;
 
@@ -57,5 +63,6 @@ export default async function handleMessageXP(message) {
     }
   }
 
-  await db.write();
+  // Save updated user list
+  await db.set('users', users);
 }

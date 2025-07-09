@@ -1,4 +1,3 @@
-
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -29,14 +28,14 @@ const loadCommands = async dir => {
     } else if (file.endsWith('.js')) {
       try {
         const command = await import(pathToFileURL(fullPath).href);
-        if (command?.default?.data && command?.default?.execute) {
-          client.commands.set(command.default.data.name, command.default);
-          commands.push(command.default.data.toJSON());
+        if (command?.data && command?.execute) {
+          client.commands.set(command.data.name, command);
+          commands.push(command.data.toJSON());
         } else {
           console.warn(`⚠️ Skipped invalid command file: ${fullPath}`);
         }
       } catch (err) {
-        console.error(`❌ Error loading command file ${fullPath}:`, err.message);
+        console.error(`❌ Error loading command file ${fullPath}:`, err);
       }
     }
   }
