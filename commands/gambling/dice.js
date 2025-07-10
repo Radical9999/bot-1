@@ -1,58 +1,38 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { db } from '../../db.js';
 
-const cooldown = new Set();
-const MAX_BET = 200000;
+export const data = new SlashCommandBuilder()
+  .setName('dice')
+  .setDescription('Roll a dice against the bot')
+  .addIntegerOption(opt =>
+    opt.setName('amount')
+      .setDescription('Coins to bet')
+      .setRequired(true));
 
-export default {
-  data: new SlashCommandBuilder()
-    .setName('dice')
-    .setDescription('Roll a dice and double your bet if you get 4 or higher')
-    .addIntegerOption(option =>
-      option.setName('amount')
-        .setDescription('Coins to bet (max 200,000)')
-        .setRequired(true)),
+export async function execute(interaction) {
+  const userId = interaction.user.id;
+  const amount = interaction.options.getInteger('amount');
 
-  async execute(interaction) {
-    const userId = interaction.user.id;
-    const amount = interaction.options.getInteger('amount');
+  const users = await db.get('users') || [];
+  const user = users.find(u => u.id === userId);
 
-    if (cooldown.has(userId)) {
-      return interaction.reply({ content: '⏳ Wait 10 seconds before rolling again.', ephemeral: true });
-    }
-
-    if (amount <= 0 || amount > MAX_BET) {
-      return interaction.reply({ content: `❌ Bet must be between 1 and ${MAX_BET}.`, ephemeral: true });
-    }
-
-    let users = await db.get('users');
-    let user = users.find(u => u.id === userId);
-
-    if (!user || user.coins < amount) {
-
-        user.totalBet = (user.totalBet || 0) + amount;
-    if (user.initialCoins === undefined) user.initialCoins = user.coins;
-      return interaction.reply({ content: '💸 You do not have enough coins.', ephemeral: true });
-    }
-
-    const roll = Math.floor(Math.random() * 6) + 1;
-    let message = `🎲 You rolled a **${roll}**!
-`;
-
-    if (roll >= 4) {
-      user.coins += amount;
-      message += `🎉 You won **${amount}** coins!`;
-    } else {
-      user.coins -= amount;
-      message += `😢 You lost **${amount}** coins.`;
-    }
-
-    await db.set('users', users);
-    cooldown.add(userId);
-    setTimeout(() => cooldown.delete(userId), 10000);
-
-    message += `
-You now have **${user.coins}** coins.`;
-    await interaction.reply({ content: message });
+  if (!user || user.coins < amount || amount <= 0) {
+    return interaction.reply({ content: '❌ Invalid bet or not enough coins.', ephemeral: true });
   }
-};
+
+  const userRoll = Math.ceil(Math.random() * 6);
+  const botRoll = Math.ceil(Math.random() * 6);
+  let result = '';
+  if (userRoll > botRoll) {
+    user.coins += amount;
+    result = `🎲 You rolled ${userRoll}, bot rolled ${botRoll}. You win **${amount}** coins!`;
+  } else if (userRoll < botRoll) {
+    user.coins -= amount;
+    result = `🎲 You rolled ${userRoll}, bot rolled ${botRoll}. You lose **${amount}** coins.`;
+  } else {
+    result = `🎲 Both rolled ${userRoll}. It's a tie.`;
+  }
+
+  await db.set('users', users);
+  await interaction.reply(result);
+}

@@ -1,95 +1,137 @@
 // /commands/utility/caption.js
 import { SlashCommandBuilder, AttachmentBuilder } from 'discord.js';
-import { GifCodec, GifFrame } from 'gifwrap';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const Jimp = require('jimp');
-
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-import { tmpdir } from 'os';
-import { v4 as uuidv4 } from 'uuid';
+const gifFrames = require('gif-frames');
+const GIFEncoder = require('gifencoder');
+const { createCanvas, loadImage } = require('canvas');
 import fetch from 'node-fetch';
+import fs from 'fs';
+import path from 'path';
+import { tmpdir } from 'os';
+import { fileURLToPath } from 'url';
+import { v4 as uuidv4 } from 'uuid';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const commandData = new SlashCommandBuilder()
+export const data = new SlashCommandBuilder()
   .setName('caption')
-  .setDescription('Adds a caption to a GIF or image')
+  .setDescription('Adds a meme-style caption to an image or animated GIF')
   .addAttachmentOption(option =>
-    option.setName('file')
-      .setDescription('Upload an image or animated GIF')
-      .setRequired(true))
+    option.setName('file').setDescription('Image or animated GIF').setRequired(true))
   .addStringOption(option =>
-    option.setName('text')
-      .setDescription('Text to add as caption')
-      .setRequired(true));
+    option.setName('text').setDescription('Caption text').setRequired(true));
 
-async function execute(interaction) {
+export async function execute(interaction) {
+  await interaction.deferReply();
+
   const attachment = interaction.options.getAttachment('file');
-  const captionText = interaction.options.getString('text');
-
-  if (!attachment || !attachment.url) {
-    return interaction.reply({ content: '❌ You must upload an image or gif file.', flags: 64 });
-  }
-
+  const captionText = interaction.options.getString('text').toUpperCase();
   const fileUrl = attachment.url;
-  const fileExt = path.extname(fileUrl).toLowerCase();
+  const fileExt = path.extname(fileUrl).split('?')[0].toLowerCase();
   const tempPath = path.join(tmpdir(), `${uuidv4()}${fileExt}`);
 
   try {
-    // Download the file
     const response = await fetch(fileUrl);
     const buffer = Buffer.from(await response.arrayBuffer());
     fs.writeFileSync(tempPath, buffer);
 
     if (fileExt === '.gif') {
-      // Animated GIF support
-      const codec = new GifCodec();
-      const gif = await codec.decodeGif(buffer);
-      const font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
-      const modifiedFrames = [];
+      const frames = await gifFrames({ url: tempPath, frames: 'all', outputType: 'png', cumulative: true });
+      const framePaths = [];
+      const delays = [];
+      const captionHeight = 60;
 
-      for (const frame of gif.frames) {
-        const jimpImage = await Jimp.read(frame.bitmap);
-        jimpImage.print(font, 10, jimpImage.bitmap.height - 30, captionText);
-        const modifiedFrame = new GifFrame(jimpImage.bitmap, {
-          delayCentisecs: frame.delayCentisecs,
-          disposalMethod: frame.disposalMethod,
+      for (const frame of frames) {
+        const framePath = path.join(tmpdir(), `${uuidv4()}.png`);
+        await new Promise((resolve, reject) => {
+          const stream = fs.createWriteStream(framePath);
+          frame.getImage().pipe(stream);
+          stream.on('finish', resolve);
+          stream.on('error', reject);
         });
-        modifiedFrames.push(modifiedFrame);
+        framePaths.push(framePath);
+        const rawDelay = frame.frameInfo?.delay;
+        delays.push((typeof rawDelay === 'number' && rawDelay > 0 ? rawDelay : 10) * 10); // in ms
       }
 
-      const encoded = await codec.encodeGif(modifiedFrames, { loops: gif.loops });
-      const outPath = path.join(tmpdir(), `${uuidv4()}.gif`);
-      fs.writeFileSync(outPath, encoded.buffer);
+      const firstImage = await loadImage(framePaths[0]);
+      const width = firstImage.width;
+      const height = firstImage.height + captionHeight;
 
-      const file = new AttachmentBuilder(outPath, { name: 'captioned.gif' });
-      await interaction.reply({ files: [file] });
+      const canvas = createCanvas(width, height);
+      const ctx = canvas.getContext('2d');
 
-      fs.unlinkSync(outPath);
+      const encoder = new GIFEncoder(width, height);
+      const gifPath = path.join(tmpdir(), `${uuidv4()}.gif`);
+      const gifStream = fs.createWriteStream(gifPath);
+      encoder.createReadStream().pipe(gifStream);
+
+      encoder.start();
+      encoder.setRepeat(0);
+      encoder.setQuality(10);
+
+      ctx.font = 'bold 28px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'black';
+
+      for (let i = 0; i < framePaths.length; i++) {
+        try {
+          const img = await loadImage(framePaths[i]);
+
+          // Clear and draw
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          ctx.fillStyle = 'black';
+          ctx.fillText(captionText, canvas.width / 2, 40);
+
+          ctx.drawImage(img, 0, captionHeight);
+
+          encoder.setDelay(delays[i] || 100);
+          encoder.addFrame(ctx);
+        } catch (frameErr) {
+          console.warn(`⚠️ Skipping frame ${i} due to error:`, frameErr.message);
+        } finally {
+          fs.unlinkSync(framePaths[i]);
+        }
+      }
+
+      encoder.finish();
+      await new Promise(resolve => gifStream.on('finish', resolve));
+
+      const file = new AttachmentBuilder(gifPath, { name: 'captioned.gif' });
+      await interaction.editReply({ files: [file] });
+      fs.unlinkSync(gifPath);
     } else {
-      // Static image
       const image = await Jimp.read(tempPath);
-      const font = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
-      image.print(font, 10, image.bitmap.height - 50, captionText);
+      const font = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK);
+      const captionHeight = 60;
+      const memeImage = new Jimp(image.bitmap.width, image.bitmap.height + captionHeight, 0xffffffff);
 
+      memeImage.print(
+        font,
+        0,
+        10,
+        { text: captionText, alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER },
+        memeImage.bitmap.width,
+        captionHeight
+      );
+
+      memeImage.composite(image, 0, captionHeight);
       const outPath = path.join(tmpdir(), `${uuidv4()}.png`);
-      await image.writeAsync(outPath);
+      await memeImage.writeAsync(outPath);
 
       const file = new AttachmentBuilder(outPath, { name: 'captioned.png' });
-      await interaction.reply({ files: [file] });
-
+      await interaction.editReply({ files: [file] });
       fs.unlinkSync(outPath);
     }
 
     fs.unlinkSync(tempPath);
-  } catch (error) {
-    console.error('❌ Caption error:', error);
-    return interaction.reply({ content: '❌ Failed to add caption. Try a different file.', flags: 64 });
+  } catch (err) {
+    console.error('❌ Caption error:', err);
+    await interaction.editReply({ content: '❌ Failed to caption image or GIF.' });
   }
 }
-
-export { commandData as data, execute };

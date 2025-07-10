@@ -1,38 +1,38 @@
+// commands/economy/daily.js
 import { SlashCommandBuilder } from 'discord.js';
 import { db } from '../../db.js';
 
 const cooldowns = new Map();
 
-export default {
-  data: new SlashCommandBuilder()
-    .setName('daily')
-    .setDescription('Claim your daily reward!'),
+export const data = new SlashCommandBuilder()
+  .setName('daily')
+  .setDescription('Claim your daily coin reward');
 
-  async execute(interaction) {
-    const userId = interaction.user.id;
-    const now = Date.now();
-    const cooldown = cooldowns.get(userId);
+export async function execute(interaction) {
+  const userId = interaction.user.id;
+  const now = Date.now();
+  const lastClaim = cooldowns.get(userId) || 0;
+  const cooldownTime = 24 * 60 * 60 * 1000; // 24 hours
 
-    if (cooldown && now - cooldown < 86400000) {
-      const timeLeft = 86400000 - (now - cooldown);
-      const hours = Math.floor(timeLeft / 3600000);
-      const minutes = Math.floor((timeLeft % 3600000) / 60000);
-      return interaction.reply(`⏳ You already claimed your daily. Come back in **${hours}h ${minutes}m**.`);
-    }
-
-    let users = await db.get('users');
-    let user = users.find(u => u.id === userId);
-
-    if (!user) {
-      user = { id: userId, xp: 25, level: 0, coins: 100 };
-      users.push(user);
-    } else {
-      user.xp += 25;
-      user.coins += 100;
-    }
-
-    await db.set('users', users);
-    cooldowns.set(userId, now);
-    await interaction.reply(`✅ You received **100 coins** and **25 XP**!`);
+  if (now - lastClaim < cooldownTime) {
+    const remaining = cooldownTime - (now - lastClaim);
+    const hours = Math.floor(remaining / (60 * 60 * 1000));
+    const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
+    return interaction.reply({
+      content: `⏳ You can claim your next daily in ${hours}h ${minutes}m.`,
+      ephemeral: true
+    });
   }
+
+  let users = await db.get('users');
+  let user = users.find(u => u.id === userId);
+  if (!user) {
+    user = { id: userId, coins: 0 };
+    users.push(user);
+  }
+  user.coins += 500;
+  await db.set('users', users);
+  cooldowns.set(userId, now);
+
+  await interaction.reply({ content: '🎉 You claimed your daily 500 coins!', ephemeral: true });
 }

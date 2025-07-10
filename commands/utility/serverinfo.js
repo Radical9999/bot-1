@@ -1,22 +1,24 @@
-import { SlashCommandBuilder } from 'discord.js';
+// commands/utility/serverinfo.js
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 
-export default {
-  data: new SlashCommandBuilder()
-    .setName('serverinfo')
-    .setDescription('Shows server information'),
-  async execute(interaction) {
-    const { guild } = interaction;
+export const data = new SlashCommandBuilder()
+  .setName('serverinfo')
+  .setDescription('Displays information about the current server');
 
-    await interaction.reply({
-      embeds: [{
-        title: `${guild.name}`,
-        thumbnail: { url: guild.iconURL({ size: 256 }) },
-        fields: [
-          { name: 'Owner', value: `<@${guild.ownerId}>`, inline: true },
-          { name: 'Members', value: `${guild.memberCount}`, inline: true },
-          { name: 'Created', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true }
-        ]
-      }]
-    });
-  }
-};
+export async function execute(interaction) {
+  const { guild } = interaction;
+
+  const embed = new EmbedBuilder()
+    .setTitle(`📊 Server Info: ${guild.name}`)
+    .setColor(0x00AE86)
+    .setThumbnail(guild.iconURL({ dynamic: true }))
+    .addFields(
+      { name: '📅 Created On', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:F>`, inline: true },
+      { name: '👑 Owner', value: `<@${guild.ownerId}>`, inline: true },
+      { name: '👥 Members', value: `${guild.memberCount}`, inline: true },
+      { name: '🆔 Server ID', value: `${guild.id}`, inline: false }
+    )
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [embed] });
+}

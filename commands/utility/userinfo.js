@@ -1,27 +1,26 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 
-export default {
-  data: new SlashCommandBuilder()
-    .setName('userinfo')
-    .setDescription('Get information about a user')
-    .addUserOption(option =>
-      option.setName('target')
-        .setDescription('The user')
-        .setRequired(false)),
-  async execute(interaction) {
-    const user = interaction.options.getUser('target') || interaction.user;
-    const member = await interaction.guild.members.fetch(user.id);
+export const data = new SlashCommandBuilder()
+  .setName('userinfo')
+  .setDescription('Displays information about a user')
+  .addUserOption(option =>
+    option.setName('user')
+      .setDescription('The user to get info about')
+      .setRequired(false));
 
-    await interaction.reply({
-      embeds: [{
-        title: `${user.tag}`,
-        thumbnail: { url: user.displayAvatarURL({ size: 256 }) },
-        fields: [
-          { name: 'ID', value: user.id, inline: true },
-          { name: 'Joined Server', value: `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>`, inline: true },
-          { name: 'Account Created', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true }
-        ]
-      }]
-    });
-  }
-};
+export async function execute(interaction) {
+  const user = interaction.options.getUser('user') || interaction.user;
+  const member = await interaction.guild.members.fetch(user.id);
+  const embed = new EmbedBuilder()
+    .setTitle(`${user.username}'s Info`)
+    .setThumbnail(user.displayAvatarURL({ size: 512 }))
+    .addFields(
+      { name: 'ID', value: user.id, inline: true },
+      { name: 'Username', value: user.tag, inline: true },
+      { name: 'Joined Server', value: new Date(member.joinedTimestamp).toLocaleString(), inline: true },
+      { name: 'Account Created', value: new Date(user.createdTimestamp).toLocaleString(), inline: true }
+    )
+    .setColor(0x3498db);
+
+  await interaction.reply({ embeds: [embed] });
+}

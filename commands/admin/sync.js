@@ -1,55 +1,40 @@
-import { SlashCommandBuilder, PermissionFlagsBits, REST, Routes } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
+import { REST, Routes } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import config from '../../config.json' assert { type: 'json' };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(__dirname, '../../');
-const config = JSON.parse(fs.readFileSync(path.join(rootDir, 'config.json'), 'utf-8'));
 
-export default {
-  data: new SlashCommandBuilder()
-    .setName('sync')
-    .setDescription('Sync slash commands to this server')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+export const data = new SlashCommandBuilder()
+  .setName('sync')
+  .setDescription('Sync all global commands (admin only)');
 
-  async execute(interaction) {
-    const commands = [];
-
-    function getAllCommandFiles(dirPath, arrayOfFiles = []) {
-      const files = fs.readdirSync(dirPath);
-      for (const file of files) {
-        const fullPath = path.join(dirPath, file);
-        if (fs.statSync(fullPath).isDirectory()) {
-          getAllCommandFiles(fullPath, arrayOfFiles);
-        } else if (file.endsWith('.js')) {
-          arrayOfFiles.push(fullPath);
-        }
-      }
-      return arrayOfFiles;
-    }
-
-    const commandFiles = getAllCommandFiles(path.join(rootDir, 'commands'));
-
-    for (const file of commandFiles) {
-      const command = await import(`file://${file}`);
-      if (command.default?.data && command.default?.execute) {
-        commands.push(command.default.data.toJSON());
-      }
-    }
-
-    const rest = new REST({ version: '10' }).setToken(config.token);
-
-    try {
-      await rest.put(
-        Routes.applicationGuildCommands(config.clientId, interaction.guildId),
-        { body: commands }
-      );
-
-      await interaction.reply({ content: '✅ Commands synced to this server.', ephemeral: true });
-    } catch (error) {
-      console.error(error);
-      await interaction.reply({ content: '❌ Failed to sync commands.', ephemeral: true });
-    }
+export async function execute(interaction) {
+  if (interaction.user.id !== config.ownerId) {
+    return interaction.reply({ content: '❌ You do not have permission to use this.', ephemeral: true });
   }
-};
+
+  const commands = [];
+  const walk = dir => {
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+      const fullPath = path.join(dir, file);
+      if (fs.statSync(fullPath).isDirectory()) walk(fullPath);
+      else if (file.endsWith('.js')) {
+        const command = require(fullPath);
+        if (command.data) commands.push(command.data.toJSON());
+      }
+    }
+  };
+  walk(path.join(__dirname, '../'));
+
+  const rest = new REST({ version: '10' }).setToken(config.token);
+  try {
+    await rest.put(Routes.applicationCommands(config.clientId), { body: commands });
+    await interaction.reply('✅ Synced all commands globally.');
+  } catch (err) {
+    await interaction.reply({ content: '❌ Failed to sync commands.', ephemeral: true });
+  }
+}

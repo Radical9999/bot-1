@@ -1,20 +1,14 @@
 import { SlashCommandBuilder } from 'discord.js';
 
-let botStartTime = Date.now();
+export const data = new SlashCommandBuilder()
+  .setName('uptime')
+  .setDescription('Displays how long the bot has been online');
 
-export function getUptime() {
-  const diff = Date.now() - botStartTime;
-  const seconds = Math.floor(diff / 1000);
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return `${hours}h ${minutes}m`;
+export async function execute(interaction) {
+  const uptime = process.uptime();
+  const hours = Math.floor(uptime / 3600);
+  const minutes = Math.floor((uptime % 3600) / 60);
+  const seconds = Math.floor(uptime % 60);
+
+  await interaction.reply(`🕒 Uptime: ${hours}h ${minutes}m ${seconds}s`);
 }
-
-export default {
-  data: new SlashCommandBuilder()
-    .setName('uptime')
-    .setDescription('Shows how long the bot has been running'),
-  async execute(interaction) {
-    await interaction.reply(`🕒 Bot has been running for **${getUptime()}**.`);
-  }
-};
