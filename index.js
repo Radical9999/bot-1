@@ -56,14 +56,17 @@ client.once('ready', () => {
 });
 
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-  const command = client.commands.get(interaction.commandName);
-  if (command) {
-    try {
-      await command.execute(interaction);
-    } catch (error) {
-      console.error(`❌ Error executing command ${interaction.commandName}:`, error);
-      await interaction.reply({ content: 'There was an error executing this command.', ephemeral: true });
+  try {
+    if (!interaction.isCommand() && !interaction.isMessageContextMenuCommand()) return;
+
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
+
+    await command.execute(interaction);
+  } catch (error) {
+    console.error('❌ Error executing command:', error);
+    if (!interaction.replied) {
+      await interaction.reply({ content: '❌ There was an error.', ephemeral: true });
     }
   }
 });
