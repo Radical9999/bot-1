@@ -5,7 +5,6 @@ const require = createRequire(import.meta.url);
 const Jimp = require('jimp');
 const gifFrames = require('gif-frames');
 const GIFEncoder = require('gifencoder');
-const { createCanvas, loadImage } = require('canvas');
 import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
@@ -38,33 +37,72 @@ export async function execute(interaction) {
     const buffer = Buffer.from(await response.arrayBuffer());
     fs.writeFileSync(tempPath, buffer);
 
+    const wrapCaption = async (text, font, maxWidth) => {
+      const words = text.split(' ');
+      let lines = [], currentLine = '';
+      for (const word of words) {
+        const testLine = currentLine + word + ' ';
+        const width = Jimp.measureText(font, testLine);
+        if (width > maxWidth - 20) {
+          lines.push(currentLine.trim());
+          currentLine = word + ' ';
+        } else {
+          currentLine = testLine;
+        }
+      }
+      lines.push(currentLine.trim());
+      return lines;
+    };
+
+    const processImage = async (imagePath, isGif = false, delays = []) => {
+      const image = await Jimp.read(imagePath);
+      const baseHeight = image.bitmap.height;
+      const baseWidth = image.bitmap.width;
+      const captionAreaHeight = Math.round(baseHeight * 0.25); // Bigger bar
+      const fontSize = baseHeight >= 600 ? 64 : baseHeight >= 400 ? 48 : 32;
+      const font = await Jimp.loadFont(Jimp[`FONT_SANS_${fontSize}_BLACK`]);
+      const lines = await wrapCaption(captionText, font, baseWidth);
+
+      const captionImage = new Jimp(baseWidth, captionAreaHeight, 0xffffffff);
+      const lineHeight = Math.floor(captionAreaHeight / lines.length);
+      lines.forEach((line, i) => {
+        captionImage.print(font, 0, i * lineHeight, {
+          text: line,
+          alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER
+        }, baseWidth);
+      });
+
+      const combined = new Jimp(baseWidth, captionAreaHeight + baseHeight, 0xffffffff);
+      combined.composite(captionImage, 0, 0);
+      combined.composite(image, 0, captionAreaHeight);
+
+      return combined;
+    };
+
     if (fileExt === '.gif') {
       const frames = await gifFrames({ url: tempPath, frames: 'all', outputType: 'png', cumulative: true });
-      const framePaths = [];
-      const delays = [];
-      const captionHeight = 60;
+      const images = [], delays = [];
 
-      for (const frame of frames) {
+      for (const frameData of frames) {
         const framePath = path.join(tmpdir(), `${uuidv4()}.png`);
         await new Promise((resolve, reject) => {
           const stream = fs.createWriteStream(framePath);
-          frame.getImage().pipe(stream);
+          frameData.getImage().pipe(stream);
           stream.on('finish', resolve);
           stream.on('error', reject);
         });
-        framePaths.push(framePath);
-        const rawDelay = frame.frameInfo?.delay;
-        delays.push((typeof rawDelay === 'number' && rawDelay > 0 ? rawDelay : 10) * 10); // in ms
+
+        const finalImage = await processImage(framePath);
+        const outPath = path.join(tmpdir(), `${uuidv4()}.png`);
+        await finalImage.writeAsync(outPath);
+
+        images.push(outPath);
+        delays.push(frameData.frameInfo?.delay ? frameData.frameInfo.delay * 10 : 100);
+        fs.unlinkSync(framePath);
       }
 
-      const firstImage = await loadImage(framePaths[0]);
-      const width = firstImage.width;
-      const height = firstImage.height + captionHeight;
-
-      const canvas = createCanvas(width, height);
-      const ctx = canvas.getContext('2d');
-
-      const encoder = new GIFEncoder(width, height);
+      const sample = await Jimp.read(images[0]);
+      const encoder = new GIFEncoder(sample.bitmap.width, sample.bitmap.height);
       const gifPath = path.join(tmpdir(), `${uuidv4()}.gif`);
       const gifStream = fs.createWriteStream(gifPath);
       encoder.createReadStream().pipe(gifStream);
@@ -73,30 +111,11 @@ export async function execute(interaction) {
       encoder.setRepeat(0);
       encoder.setQuality(10);
 
-      ctx.font = 'bold 28px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = 'black';
-
-      for (let i = 0; i < framePaths.length; i++) {
-        try {
-          const img = await loadImage(framePaths[i]);
-
-          // Clear and draw
-          ctx.fillStyle = 'white';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-          ctx.fillStyle = 'black';
-          ctx.fillText(captionText, canvas.width / 2, 40);
-
-          ctx.drawImage(img, 0, captionHeight);
-
-          encoder.setDelay(delays[i] || 100);
-          encoder.addFrame(ctx);
-        } catch (frameErr) {
-          console.warn(`⚠️ Skipping frame ${i} due to error:`, frameErr.message);
-        } finally {
-          fs.unlinkSync(framePaths[i]);
-        }
+      for (let i = 0; i < images.length; i++) {
+        const frame = await Jimp.read(images[i]);
+        encoder.setDelay(delays[i]);
+        encoder.addFrame(frame.bitmap.data);
+        fs.unlinkSync(images[i]);
       }
 
       encoder.finish();
@@ -106,23 +125,9 @@ export async function execute(interaction) {
       await interaction.editReply({ files: [file] });
       fs.unlinkSync(gifPath);
     } else {
-      const image = await Jimp.read(tempPath);
-      const font = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK);
-      const captionHeight = 60;
-      const memeImage = new Jimp(image.bitmap.width, image.bitmap.height + captionHeight, 0xffffffff);
-
-      memeImage.print(
-        font,
-        0,
-        10,
-        { text: captionText, alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER },
-        memeImage.bitmap.width,
-        captionHeight
-      );
-
-      memeImage.composite(image, 0, captionHeight);
+      const finalImage = await processImage(tempPath);
       const outPath = path.join(tmpdir(), `${uuidv4()}.png`);
-      await memeImage.writeAsync(outPath);
+      await finalImage.writeAsync(outPath);
 
       const file = new AttachmentBuilder(outPath, { name: 'captioned.png' });
       await interaction.editReply({ files: [file] });
