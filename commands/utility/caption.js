@@ -54,17 +54,17 @@ export async function execute(interaction) {
       return lines;
     };
 
-    const processImage = async (imagePath, isGif = false, delays = []) => {
+    const processImage = async (imagePath) => {
       const image = await Jimp.read(imagePath);
       const baseHeight = image.bitmap.height;
       const baseWidth = image.bitmap.width;
-      const captionAreaHeight = Math.round(baseHeight * 0.25); // Bigger bar
-      const fontSize = baseHeight >= 600 ? 64 : baseHeight >= 400 ? 48 : 32;
-      const font = await Jimp.loadFont(Jimp[`FONT_SANS_${fontSize}_BLACK`]);
+
+      const font = await Jimp.loadFont(Jimp.FONT_SANS_64_BLACK);
       const lines = await wrapCaption(captionText, font, baseWidth);
+      const lineHeight = 72; // Use 72 pt equivalent spacing
+      const captionAreaHeight = lineHeight * lines.length + 20; // Slight padding
 
       const captionImage = new Jimp(baseWidth, captionAreaHeight, 0xffffffff);
-      const lineHeight = Math.floor(captionAreaHeight / lines.length);
       lines.forEach((line, i) => {
         captionImage.print(font, 0, i * lineHeight, {
           text: line,
