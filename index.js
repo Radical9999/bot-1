@@ -71,6 +71,32 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
+import { saveMessage, getRandomMessage, getChatChannel } from './chatMemory.js';
+
+client.on('messageCreate', async message => {
+  if (message.author.bot || !message.guild) return;
+
+  if (Math.random() < 0.3 && message.content.length > 5) {
+    saveMessage(message.guild.id, message.content);
+  }
+
+  if (message.mentions.has(client.user)) {
+    const reply = getRandomMessage(message.guild.id);
+    if (reply) {
+      await message.reply(reply);
+    }
+  }
+
+  // Random talk in set channel
+  const allowedChannel = getChatChannel(message.guild.id);
+  if (allowedChannel && message.channel.id === allowedChannel) {
+    if (Math.random() < 0.005) {
+      const msg = getRandomMessage(message.guild.id);
+      if (msg) message.channel.send(msg);
+    }
+  }
+});
+
 client.on('messageCreate', handleMessageXP);
 
 client.login(config.token);
