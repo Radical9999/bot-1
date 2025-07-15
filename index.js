@@ -84,7 +84,7 @@ client.on('messageCreate', async message => {
     await saveMessage(message.guild.id, message.content);
 
     const mentioned = message.mentions.has(client.user);
-    const shouldSpeak = Math.random() < 0.005;
+    const shouldSpeak = Math.random() < 0.9;
 
     if (mentioned || shouldSpeak) {
       const reply = await getRandomMessage(message.guild.id);
