@@ -1,13 +1,21 @@
+// index.js
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { Client, Collection, GatewayIntentBits, REST, Routes } from 'discord.js';
+import {
+  Client, Collection, GatewayIntentBits, REST, Routes
+} from 'discord.js';
 import handleMessageXP from './utils/messageXpSystem.js';
+import {
+  saveMessage,
+  getRandomMessage,
+  getChatChannel
+} from './chatMemory.js';
 
 const config = JSON.parse(fs.readFileSync('./config.json', 'utf-8'));
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const client = new Client({
+export const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
@@ -58,10 +66,8 @@ client.once('ready', () => {
 client.on('interactionCreate', async interaction => {
   try {
     if (!interaction.isCommand() && !interaction.isMessageContextMenuCommand()) return;
-
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
-
     await command.execute(interaction);
   } catch (error) {
     console.error('❌ Error executing command:', error);
@@ -71,29 +77,30 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-import { saveMessage, getRandomMessage, getChatChannel } from './chatMemory.js';
-
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
-  if (Math.random() < 0.3 && message.content.length > 5) {
-    saveMessage(message.guild.id, message.content);
-  }
+  try {
+    await saveMessage(message.guild.id, message.content);
 
-  if (message.mentions.has(client.user)) {
-    const reply = getRandomMessage(message.guild.id);
-    if (reply) {
-      await message.reply(reply);
-    }
-  }
+    const mentioned = message.mentions.has(client.user);
+    const shouldSpeak = Math.random() < 0.005;
 
-  // Random talk in set channel
-  const allowedChannel = getChatChannel(message.guild.id);
-  if (allowedChannel && message.channel.id === allowedChannel) {
-    if (Math.random() < 0.005) {
-      const msg = getRandomMessage(message.guild.id);
-      if (msg) message.channel.send(msg);
+    if (mentioned || shouldSpeak) {
+      const reply = await getRandomMessage(message.guild.id);
+      if (reply) {
+        const talkChannelId = await getChatChannel(message.guild.id);
+        const targetChannel = talkChannelId
+          ? await client.channels.fetch(talkChannelId).catch(() => null)
+          : message.channel;
+
+        if (targetChannel?.isTextBased()) {
+          await targetChannel.send(reply);
+        }
+      }
     }
+  } catch (err) {
+    console.error('❌ Message processing error:', err);
   }
 });
 
