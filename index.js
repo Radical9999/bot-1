@@ -137,26 +137,37 @@ client.on('messageCreate', async message => {
 // XP system
 client.on('messageCreate', handleMessageXP);
 
-// Random chatter every 5–10 minutes
+// Random chatter every 1–20 minutes
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-  (function randomChat() {
-    client.guilds.cache.forEach(async guild => {
-      try {
-        const channelId = await getChatChannel(guild.id);
-        if (!channelId) return;
-        const channel = await client.channels.fetch(channelId).catch(() => null);
-        if (!channel?.isTextBased()) return;
-        const raw = await getRandomMessage(guild.id);
-        if (!raw) return;
 
-        const reply = withPersonality(raw);
-        await channel.send(reply);
-      } catch (err) {
-        console.error('❌ Interval chat error:', err);
-      }
-    });
-    const next = Math.floor(Math.random() * (10 - 5 + 1) + 5) * 60 * 1000;
+  (function randomChat() {
+    const now = new Date();
+    const hour = now.getHours(); // local time (0–23)
+
+    if (hour >= 0 && hour < 8) {
+      console.log('🌙 Quiet hours (20:00–07:00 local time) — skipping message.');
+    } else {
+      client.guilds.cache.forEach(async guild => {
+        try {
+          const channelId = await getChatChannel(guild.id);
+          if (!channelId) return;
+
+          const channel = await client.channels.fetch(channelId).catch(() => null);
+          if (!channel?.isTextBased()) return;
+
+          const raw = await getRandomMessage(guild.id);
+          if (!raw) return;
+
+          const reply = withPersonality(raw);
+          await channel.send(reply);
+        } catch (err) {
+          console.error('❌ Interval chat error:', err);
+        }
+      });
+    }
+
+    const next = Math.floor(Math.random() * (20 - 1 + 1) + 1) * 60 * 1000; // 1–20 min
     setTimeout(randomChat, next);
   })();
 });
