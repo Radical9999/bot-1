@@ -59,9 +59,9 @@ export async function execute(interaction) {
       const baseHeight = image.bitmap.height;
       const baseWidth = image.bitmap.width;
 
-      const font = await Jimp.loadFont(Jimp.FONT_SANS_64_BLACK);
+      const font = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK);
       const lines = await wrapCaption(captionText, font, baseWidth);
-      const lineHeight = 72; // Use 72 pt equivalent spacing
+      const lineHeight = 30; // Use 72 pt equivalent spacing
       const captionAreaHeight = lineHeight * lines.length + 20; // Slight padding
 
       const captionImage = new Jimp(baseWidth, captionAreaHeight, 0xffffffff);

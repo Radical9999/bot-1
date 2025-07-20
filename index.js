@@ -7,14 +7,11 @@ import {
   Collection,
   GatewayIntentBits,
   REST,
-  Routes
+  Routes,
+  Events
 } from 'discord.js';
+import { saveMessage, getRandomMessage, getChatChannel } from './chatMemory.js';
 import handleMessageXP from './utils/messageXpSystem.js';
-import {
-  saveMessage,
-  getRandomMessage,
-  getChatChannel
-} from './chatMemory.js';
 
 const config = JSON.parse(fs.readFileSync('./config.json', 'utf-8'));
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -22,15 +19,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+  GatewayIntentBits.GuildMessages,
+  GatewayIntentBits.MessageContent
   ]
 });
 
 client.commands = new Collection();
 const commands = [];
 
-// Load slash/context commands
+// Load commands from /commands directory
 const loadCommands = async dir => {
   const files = fs.readdirSync(dir);
   for (const file of files) {
@@ -39,16 +36,11 @@ const loadCommands = async dir => {
     if (stat.isDirectory()) {
       await loadCommands(fullPath);
     } else if (file.endsWith('.js')) {
-      try {
-        const cmd = await import(pathToFileURL(fullPath).href);
-        if (cmd?.data && cmd?.execute) {
-          client.commands.set(cmd.data.name, cmd);
-          commands.push(cmd.data.toJSON());
-        } else {
-          console.warn(`⚠️ Skipped invalid command file: ${fullPath}`);
-        }
-      } catch (err) {
-        console.error(`❌ Error loading command file ${fullPath}:`, err);
+      const command = await import(pathToFileURL(fullPath).href);
+      if (command?.data && command?.execute) {
+        client.commands.set(command.data.name, command);
+        commands.push(command.data.toJSON());
+        console.log(`✅ Loaded command: ${command.data.name}`);
       }
     }
   }
@@ -56,68 +48,58 @@ const loadCommands = async dir => {
 
 await loadCommands(path.join(__dirname, 'commands'));
 
-// Register commands
+// Register global slash commands
 const rest = new REST({ version: '10' }).setToken(config.token);
 try {
-  await rest.put(Routes.applicationCommands(config.clientId), { body: commands });
-  console.log('✅ Global commands registered.');
+  await rest.put(
+    Routes.applicationCommands(config.clientId),
+    { body: commands }
+  );
+  console.log(`✅ Global slash commands registered: ${commands.map(c => c.name).join(', ')}`);
 } catch (err) {
   console.error('❌ Failed to register commands:', err);
 }
 
-// Personality intro function
+// Slash command handler
+client.on(Events.InteractionCreate, async interaction => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const command = client.commands.get(interaction.commandName);
+  if (!command) {
+    console.error(`❌ No command matching ${interaction.commandName}`);
+    return;
+  }
+
+  try {
+    await command.execute(interaction);
+  } catch (err) {
+    console.error(`❌ Error executing ${interaction.commandName}:`, err);
+    const reply = { content: '❌ There was an error.', ephemeral: true };
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(reply);
+    } else {
+      await interaction.reply(reply);
+    }
+  }
+});
+
+// Bot personality intro generator
 function withPersonality(text) {
   const intros = [
-    "😺 Your friendly bot says:",
-    "🤖 Beep boop—here's my thought:",
-    "🧠 Brain blast incoming:",
-    "💬 Just tossing this out there:",
-    "🐱 Did someone say wisdom?",
-    "🔊 Incoming transmission:",
-    "📣 Hey listen!",
-    "🧋 Sippin' tea and thinkin':",
-    "😼 In my humble opinion:",
-    "👀 Look what I found:",
-    "🌟 Just a random gem:",
-    "🎲 Rolled this idea:",
-    "🎉 Surprise thought:",
-    "🎤 Mic drop moment:",
-    "🎮 Gamer thoughts loading...",
-    "📡 Broadcast from bot HQ:",
-    "🎧 Here's what’s playing in my head:",
-    "📘 Fun fact… maybe:",
-    "🕵️ I’ve analyzed this:",
-    "🧊 Cool take coming in:",
-    "🌈 Mood today says:",
-    "🎭 Feeling dramatic so here:",
-    "🧶 Spinning this thread:",
-    "🌍 Universal truth alert:",
-    "🎯 Straight to the point:",
-    "🔮 The spirits told me this:",
-    "🍿 Grab popcorn for this one:",
-    "🚀 Buckle up, thought ahead:",
-    "📀 Rewinding to this idea:",
-    "🎃 Creepy little comment:",
-    "🪐 Cosmic thought blast:",
-    "🥁 Drumroll... here it is:",
-    "💡 Thought of the moment:",
-    "📦 Random box says:",
-    "🎨 Paintin’ you a picture:",
-    "🪄 Magic whisper:",
-    "💭 From deep in my memory banks:"
+    "😺 Here's a thought:", "🤖 Beep boop:", "🧠 Wisdom drop:",
+    "🗣️ My opinion:", "🔊 Incoming:", "🎯 Random idea:", "🎤 Here's what I think:"
   ];
-
-  const prefix = intros[Math.floor(Math.random() * intros.length)];
-  return `${prefix} ${text}`;
+  return `${intros[Math.floor(Math.random() * intros.length)]} ${text}`;
 }
 
-// Reply when mentioned
+// Respond to mentions
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
+
   try {
     await saveMessage(message.guild.id, message.content);
-    const mentioned = message.mentions.has(client.user);
-    if (mentioned) {
+
+    if (message.mentions.has(client.user)) {
       const raw = await getRandomMessage(message.guild.id);
       if (!raw) return;
       const reply = withPersonality(raw);
@@ -125,28 +107,24 @@ client.on('messageCreate', async message => {
       const target = talkChannelId
         ? await client.channels.fetch(talkChannelId).catch(() => null)
         : message.channel;
-      if (target?.isTextBased()) {
-        await target.send(reply);
-      }
+      if (target?.isTextBased()) await target.send(reply);
     }
   } catch (err) {
     console.error('❌ Mention-reply error:', err);
   }
 });
 
-// XP system
+// XP handler
 client.on('messageCreate', handleMessageXP);
 
-// Random chatter every 1–20 minutes
+// Random bot chatter (1–20 min) with quiet hours (00:00–08:00 local time)
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
   (function randomChat() {
-    const now = new Date();
-    const hour = now.getHours(); // local time (0–23)
-
+    const hour = new Date().getHours();
     if (hour >= 0 && hour < 8) {
-      console.log('🌙 Quiet hours (20:00–07:00 local time) — skipping message.');
+      console.log('🌙 Quiet hours — bot will not speak.');
     } else {
       client.guilds.cache.forEach(async guild => {
         try {
@@ -167,7 +145,7 @@ client.once('ready', () => {
       });
     }
 
-    const next = Math.floor(Math.random() * (20 - 1 + 1) + 1) * 60 * 1000; // 1–20 min
+    const next = Math.floor(Math.random() * 20 + 1) * 60 * 1000;
     setTimeout(randomChat, next);
   })();
 });
