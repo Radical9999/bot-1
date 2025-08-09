@@ -1,4 +1,4 @@
-// index.js
+// ✅ Full index.js with chatbot toggle + random chat toggle
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -10,7 +10,13 @@ import {
   Routes,
   Events
 } from 'discord.js';
-import { saveMessage, getRandomMessage, getChatChannel } from './chatMemory.js';
+import {
+  saveMessage,
+  getRandomMessage,
+  getChatChannel,
+  isChatbotEnabled,
+  isRandomReplyEnabled
+} from './chatMemory.js';
 import handleMessageXP from './utils/messageXpSystem.js';
 
 const config = JSON.parse(fs.readFileSync('./config.json', 'utf-8'));
@@ -19,15 +25,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-  GatewayIntentBits.GuildMessages,
-  GatewayIntentBits.MessageContent
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
   ]
 });
 
 client.commands = new Collection();
 const commands = [];
 
-// Load commands from /commands directory
+// Load commands
 const loadCommands = async dir => {
   const files = fs.readdirSync(dir);
   for (const file of files) {
@@ -48,7 +54,6 @@ const loadCommands = async dir => {
 
 await loadCommands(path.join(__dirname, 'commands'));
 
-// Register global slash commands
 const rest = new REST({ version: '10' }).setToken(config.token);
 try {
   await rest.put(
@@ -60,16 +65,13 @@ try {
   console.error('❌ Failed to register commands:', err);
 }
 
-// Slash command handler
 client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
+  if (!interaction.isCommand() && !interaction.isMessageContextMenuCommand()) return;
   const command = client.commands.get(interaction.commandName);
   if (!command) {
     console.error(`❌ No command matching ${interaction.commandName}`);
     return;
   }
-
   try {
     await command.execute(interaction);
   } catch (err) {
@@ -83,7 +85,6 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 });
 
-// Bot personality intro generator
 function withPersonality(text) {
   const intros = [
     "😺 Here's a thought:", "🤖 Beep boop:", "🧠 Wisdom drop:",
@@ -92,12 +93,14 @@ function withPersonality(text) {
   return `${intros[Math.floor(Math.random() * intros.length)]} ${text}`;
 }
 
-// Respond to mentions
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
   try {
     await saveMessage(message.guild.id, message.content);
+
+    const enabled = await isChatbotEnabled(message.guild.id);
+    if (!enabled) return;
 
     if (message.mentions.has(client.user)) {
       const raw = await getRandomMessage(message.guild.id);
@@ -114,10 +117,8 @@ client.on('messageCreate', async message => {
   }
 });
 
-// XP handler
 client.on('messageCreate', handleMessageXP);
 
-// Random bot chatter (1–20 min) with quiet hours (00:00–08:00 local time)
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
@@ -128,6 +129,9 @@ client.once('ready', () => {
     } else {
       client.guilds.cache.forEach(async guild => {
         try {
+          const enabled = await isRandomReplyEnabled(guild.id);
+          if (!enabled) return;
+
           const channelId = await getChatChannel(guild.id);
           if (!channelId) return;
 
@@ -144,7 +148,6 @@ client.once('ready', () => {
         }
       });
     }
-
     const next = Math.floor(Math.random() * 20 + 1) * 60 * 1000;
     setTimeout(randomChat, next);
   })();
